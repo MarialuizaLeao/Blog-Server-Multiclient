@@ -9,7 +9,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <pthread.h>
+#include <semaphore.h>
 
+#define ERROR -1
 #define NEW_CONNECTION 1
 #define NEW_POST 2
 #define LIST_TOPICS 3
@@ -30,12 +33,8 @@ struct BlogOperation {
     char content[2048];
 };
 
-struct BlogOperation initBlogOperation(int client_id, int operation_type, char *topic, char *content){
-    struct BlogOperation blogOperation;
-    blogOperation.client_id = client_id;
-    blogOperation.operation_type = operation_type;
-    blogOperation.server_response = 0;
-    strcpy(blogOperation.topic, topic);
-    strcpy(blogOperation.content, content);
-    return blogOperation;
-}
+struct BlogOperation initBlogOperation(int client_id, int operation_type, char *topic, char *content, int server_response);
+int addrparse(const char * addrstr, const char * portstr, struct sockaddr_storage * storage);
+int server_sockaddr_init(const char * protocol_version, const char * portstr, struct sockaddr_storage * storage);
+void logexit(const char * msg);
+size_t receive_all(int socket, void * buffer, size_t length);
