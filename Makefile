@@ -4,7 +4,7 @@ OBJ = obj
 SRC = src
 INC = include
 CFLAGS = -Wall -g -pthread -I$(INC)
-HDRS = $(INC)/common.h
+HDRS = $(INC)/common.h $(INC)/client.h
 
 all: $(BIN)/server $(BIN)/client
 
