@@ -1,11 +1,71 @@
 #include "common.h"
-#include <pthread.h>
-#include <semaphore.h>
 
 char *ip;
 char *port;
 int myId = -1;
 pthread_t waitingThread;
+
+void initArgs(int argc, char *argv[]);
+int parseCommand(char *input);
+char *parseContent(int command, char *input);
+void handleResponse(struct BlogOperation response);
+void* waitForResponse(void* sock);
+int initClientSockaddr(const char *ip, const char *portstr, struct sockaddr_storage *storage);
+int initSocket();
+
+int main(int argc, char **argv){
+    initArgs(argc, argv);
+    int sockfd = initSocket();
+    struct BlogOperation request = initBlogOperation(0, NEW_CONNECTION, "", "", 0);
+    int count = send(sockfd, &request, sizeof(request), 0); // send request to server
+    if(count != sizeof(request)) logexit("send");
+    struct BlogOperation response;
+    receive_all(sockfd, &response, sizeof(struct BlogOperation)); // recv client's ID
+    myId = response.client_id;
+    pthread_create(&waitingThread, NULL, &waitForResponse, (void*) &sockfd);
+
+    char input[BUFFER_SIZE];
+    while(true){
+        fgets(input, BUFFER_SIZE, stdin);
+        int cmdType = parseCommand(input);
+        char *topic = " ";
+        switch(cmdType){
+            case  NEW_POST:
+                topic = parseContent(cmdType, input);
+                fgets(input, BUFFER_SIZE, stdin);
+                char content[BUFFER_SIZE];
+                strcpy(content, input);
+                request = initBlogOperation(myId, cmdType, topic, content, 0);
+                break;
+            case LIST_TOPICS:
+                request = initBlogOperation(myId, cmdType, "", "", 0);
+                break;
+            case SUBSCRIBE:
+                topic = parseContent(cmdType, input);
+                request = initBlogOperation(myId, cmdType, topic, "", 0);
+                break;
+            case UNSUBSCRIBE:
+                topic = parseContent(cmdType, input);
+                request = initBlogOperation(myId, cmdType, topic, "", 0);
+                break;
+            case EXIT:
+                printf("exit\n");
+                request = initBlogOperation(myId, cmdType, "", "", 0);
+                break;
+            case ERROR:
+                printf("Invalid command\n");
+                continue;
+                break;
+            default:
+                break;
+        }
+        if(cmdType != ERROR){
+            size_t count_bytes_sent = send(sockfd, &request, sizeof(request), 0);
+            if(count_bytes_sent != sizeof(struct BlogOperation)) logexit("send");
+        }
+        if(cmdType == EXIT) break;
+    }
+}
 
 void initArgs(int argc, char *argv[]){
     if(argc != 3){
@@ -72,10 +132,13 @@ void handleResponse(struct BlogOperation response){
         printf("%s\n", response.content);
     }
     else if(response.operation_type == NEW_POST){
-        printf("new post added in %s by 0%s\n", response.topic, response.content);
+        printf("new post added in %s by 0%d\n%s", response.topic, response.client_id, response.content);
     }
     else if(response.operation_type == EXIT){
         printf("exit\n");
+    }
+    else if(response.operation_type == ERROR){
+        printf("%s\n", response.content);
     }
 }
 
@@ -93,7 +156,7 @@ void* waitForResponse(void* sock){
     pthread_exit(NULL);
 }
 
-int clientSockaddrInit(const char *ip, const char *portstr, struct sockaddr_storage *storage){
+int initClientSockaddr(const char *ip, const char *portstr, struct sockaddr_storage *storage){
     if(ip == NULL || portstr == NULL) return -1;
     // inicialize port
     uint16_t port = (uint16_t) atoi(portstr);
@@ -119,10 +182,10 @@ int clientSockaddrInit(const char *ip, const char *portstr, struct sockaddr_stor
     return -1;
 }
 
-int socketInit(){
+int initSocket(){
     // inicialize address
     struct sockaddr_storage storage;
-    if(clientSockaddrInit(ip, port, &storage) != 0) logexit("clientSockaddrInit");
+    if(initClientSockaddr(ip, port, &storage) != 0) logexit("clientSockaddrInit");
     // inicialize socket
     int sockfd = socket(storage.ss_family, SOCK_STREAM, 0);
     if(sockfd == -1) logexit("socket");
@@ -130,59 +193,4 @@ int socketInit(){
     struct sockaddr *addr = (struct sockaddr *)(&storage); 
     if(connect(sockfd, addr, sizeof(storage)) != 0) logexit("connect");
     return sockfd;
-}
-
-int main(int argc, char **argv){
-    initArgs(argc, argv);
-    int sockfd = socketInit();
-    struct BlogOperation request = initBlogOperation(0, NEW_CONNECTION, "", "", 0);
-    int count = send(sockfd, &request, sizeof(request), 0); // send request to server
-    if(count != sizeof(request)) logexit("send");
-    struct BlogOperation response;
-    receive_all(sockfd, &response, sizeof(struct BlogOperation)); // recv client's ID
-    myId = response.client_id;
-    printf("My ID is %d\n", response.client_id);
-    pthread_create(&waitingThread, NULL, &waitForResponse, (void*) &sockfd);
-
-    char input[BUFFER_SIZE];
-    while(true){
-        fgets(input, BUFFER_SIZE, stdin);
-        int cmdType = parseCommand(input);
-        char *topic = " ";
-        switch(cmdType){
-            case  NEW_POST:
-                topic = parseContent(cmdType, input);
-                fgets(input, BUFFER_SIZE, stdin);
-                char content[BUFFER_SIZE];
-                strcpy(content, input);
-                request = initBlogOperation(myId, cmdType, topic, content, 0);
-                break;
-            case LIST_TOPICS:
-                request = initBlogOperation(myId, cmdType, "", "", 0);
-                break;
-            case SUBSCRIBE:
-                topic = parseContent(cmdType, input);
-                request = initBlogOperation(myId, cmdType, topic, "", 0);
-                break;
-            case UNSUBSCRIBE:
-                topic = parseContent(cmdType, input);
-                request = initBlogOperation(myId, cmdType, topic, "", 0);
-                break;
-            case EXIT:
-                printf("exit\n");
-                request = initBlogOperation(myId, cmdType, "", "", 0);
-                break;
-            case ERROR:
-                printf("Invalid command\n");
-                continue;
-                break;
-            default:
-                break;
-        }
-        if(cmdType != ERROR){
-            size_t count_bytes_sent = send(sockfd, &request, sizeof(request), 0);
-            if(count_bytes_sent != sizeof(struct BlogOperation))
-                logexit("send");
-        }
-    }
 }

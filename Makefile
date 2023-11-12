@@ -1,24 +1,27 @@
 CC = gcc
-CFLAGS = -Wall -g -pthread -I .
 BIN = bin
 OBJ = obj
+SRC = src
+INC = include
+CFLAGS = -Wall -g -pthread -I$(INC)
+HDRS = $(INC)/common.h
 
 all: $(BIN)/server $(BIN)/client
 
-$(BIN)/server: $(OBJ)/server.o $(OBJ)/common.o | $(BIN)
+$(BIN)/server: $(HDRS) $(OBJ)/server.o $(OBJ)/common.o | $(BIN)
 	$(CC) $(CFLAGS) $(OBJ)/server.o $(OBJ)/common.o -o $(BIN)/server
 
-$(OBJ)/server.o: server.c | $(OBJ)
-	$(CC) server.c $(CFLAGS) -c  -o $(OBJ)/server.o
+$(OBJ)/server.o: $(HDRS) $(SRC)/server.c | $(OBJ)
+	$(CC) $(SRC)/server.c $(CFLAGS) -c  -o $(OBJ)/server.o
 
-$(BIN)/client: $(OBJ)/client.o $(OBJ)/common.o | $(BIN)
+$(BIN)/client: $(HDRS) $(OBJ)/client.o $(OBJ)/common.o | $(BIN)
 	$(CC) $(CFLAGS) $(OBJ)/client.o $(OBJ)/common.o -o $(BIN)/client
 
-$(OBJ)/client.o: client.c | $(OBJ)
-	$(CC) client.c $(CFLAGS) -c -o $(OBJ)/client.o
+$(OBJ)/client.o: $(HDRS) $(SRC)/client.c | $(OBJ)
+	$(CC) $(SRC)/client.c $(CFLAGS) -c -o $(OBJ)/client.o
 
-$(OBJ)/common.o: common.c | $(OBJ)
-	$(CC) common.c $(CFLAGS) -c -o $(OBJ)/common.o
+$(OBJ)/common.o: $(HDRS) $(SRC)/common.c | $(OBJ)
+	$(CC) $(SRC)/common.c $(CFLAGS) -c -o $(OBJ)/common.o
 
 $(OBJ): 
 	mkdir $(OBJ)
