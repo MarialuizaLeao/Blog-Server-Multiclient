@@ -3,7 +3,6 @@
 
 int main(int argc, char *argv[]){
     initArgs(argc, argv); // initialize ip and port
-    sem_init(&semaphore, 0, 1); // initialize semaphore
     initBlog(); // initialize blog
     int sockfd = initSocket(); // initialize socket
 
@@ -16,7 +15,7 @@ int main(int argc, char *argv[]){
         if(csock == -1) logexit("accept");
         // add new user to the blog
         int newClientId = addNewUser(csock);
-        printf("client 0%d connected\n", newClientId + 1);
+        printf("client %02d connected\n", newClientId + 1);
         // send new connection response to client
         struct BlogOperation response = initBlogOperation(newClientId, NEW_CONNECTION, "", "", 1);
         size_t count = send(csock, &response, sizeof(struct BlogOperation), 0);
@@ -144,23 +143,19 @@ int unsubscribeToTopic(int userId, char* topic){
 
 // Add a new user to the blog
 int addNewUser(int sock){
-    sem_wait(&semaphore);
     for(int i = 0; i < 10; i++){
         if(mediumBlog.users[i] == false){
             mediumBlog.users[i] = true;
             mediumBlog.usersCount++;
             mediumBlog.clients[i] = initClient(i, sock);
-            sem_post(&semaphore);
             return i;
         }
     }
-    sem_post(&semaphore);
     return -1;
 }
 
 // Remove a user from the blog
 void removeUser(int userId){
-    sem_wait(&semaphore);
     mediumBlog.users[userId] = false;
     mediumBlog.usersCount--;
     for(int i = 0; i < mediumBlog.topicsCount; i++){
@@ -168,7 +163,6 @@ void removeUser(int userId){
             mediumBlog.topics[i].subscribed[userId] = false;
         }
     }
-    sem_post(&semaphore);
 }
 
 // Initialize a blog operation
@@ -176,7 +170,7 @@ void getTopics(char *topics){
     if(mediumBlog.topicsCount != 0){
         for(int i = 0; i < mediumBlog.topicsCount; i++){
             strcat(topics, mediumBlog.topics[i].name);
-            if(i != mediumBlog.topicsCount - 1) strcat(topics, "; ");
+            if(i != mediumBlog.topicsCount - 1) strcat(topics, ";");
         }
     }
     else{
@@ -200,7 +194,7 @@ struct BlogOperation handleClientRequest(struct BlogOperation request){
     switch (request.operation_type){
         case NEW_POST:
             addPost(request.client_id, request.content, request.topic);
-            printf("new post added in %s by 0%d\n", request.topic, request.client_id+1);
+            printf("new post added in %s by %02d\n", request.topic, request.client_id+1);
             break;
         case LIST_TOPICS:;
             char *topics = malloc(sizeof(char) * BUFFER_SIZE);
@@ -209,15 +203,15 @@ struct BlogOperation handleClientRequest(struct BlogOperation request){
             break;
         case SUBSCRIBE:
             if(subscribeToTopic(request.client_id, request.topic) != SUCCESS) response = initBlogOperation(request.client_id, ERROR, "", "error: already subscribed", 1);
-            else printf("client 0%d subscribed to %s\n", request.client_id+1, request.topic);
+            else printf("client %02d subscribed to %s\n", request.client_id+1, request.topic);
             break;
         case UNSUBSCRIBE:
             if(unsubscribeToTopic(request.client_id, request.topic) != SUCCESS) response = initBlogOperation(request.client_id, ERROR, "", "error: not subscribed", 1);
-            else printf("client 0%d unsubscribed to %s\n", request.client_id+1, request.topic);
+            else printf("client %02d unsubscribed to %s\n", request.client_id+1, request.topic);
             break;
         case EXIT:
             removeUser(request.client_id);
-            printf("client 0%d was disconnected\n", request.client_id + 1);
+            printf("client %02d disconnected\n", request.client_id + 1);
             break;
         default:
             break;
@@ -232,18 +226,24 @@ void* clientFunction(void* clientThread)
     int sockfd = clientThreadPtr->sock;
     struct BlogOperation request;
     while(true){
-        int count = receive_all(sockfd, &request, sizeof(struct BlogOperation));
+        // receive request from client
+        int count = recv(sockfd, &request, sizeof(struct BlogOperation), 0);
+
+        // if client disconnected, close connection
         if(count == 0){
             request.operation_type = EXIT;
         }
+        else if(count != sizeof(struct BlogOperation)) logexit("recv");
+
         // handle client request
         struct BlogOperation response = handleClientRequest(request);
         
         // send response to client
-        if(response.server_response != -1){
+        if(response.server_response != ERROR){
             size_t count_bytes_sent = send(sockfd, &response, sizeof(struct BlogOperation), 0);
             if(count_bytes_sent != sizeof(struct BlogOperation)) logexit("send");
         }
+
         // if client wants to exit, close connection
         if(request.operation_type == EXIT){
             close(sockfd);

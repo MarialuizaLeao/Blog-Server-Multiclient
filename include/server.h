@@ -3,7 +3,6 @@
 char *ip;
 char *port;
 struct Blog mediumBlog;
-sem_t semaphore;
 
 /* 
 

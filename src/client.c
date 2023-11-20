@@ -7,7 +7,8 @@ int main(int argc, char **argv){
     int count = send(sockfd, &request, sizeof(request), 0); // send request to server
     if(count != sizeof(request)) logexit("send");
     struct BlogOperation response;
-    receive_all(sockfd, &response, sizeof(struct BlogOperation)); // recv client's ID
+    int count_bytes_recv = recv(sockfd, &response, sizeof(struct BlogOperation), 0); // receive response from server
+    if(count_bytes_recv != sizeof(struct BlogOperation)) logexit("recv");
     myId = response.client_id;
     pthread_create(&waitingThread, NULL, &waitForResponse, (void*) &sockfd);
 
@@ -36,7 +37,6 @@ int main(int argc, char **argv){
                 request = initBlogOperation(myId, cmdType, topic, "", 0);
                 break;
             case EXIT:
-                printf("exit\n");
                 request = initBlogOperation(myId, cmdType, "", "", 0);
                 break;
             case ERROR:
@@ -75,18 +75,11 @@ int parseCommand(char *input){
     if(strcmp(input, "list topics") == 0){
         return LIST_TOPICS;
     }
+    
     if(strcmp(command, "subscribe") == 0){
-        char *inKeyword = strtok(NULL, " ");
-        if(inKeyword == NULL || !(strcmp(inKeyword, "in") == 0 || strcmp(inKeyword, "to") == 0)){
-            return -1;
-        }
         return SUBSCRIBE;
     }
     if(strcmp(command, "unsubscribe") == 0){
-        char *inKeyword = strtok(NULL, " ");
-        if(inKeyword == NULL || !(strcmp(inKeyword, "in") == 0 || strcmp(inKeyword, "to") == 0)){
-            return -1;
-        }
         return UNSUBSCRIBE;
     }
     if(strcmp(command, "publish") == 0){
@@ -106,9 +99,17 @@ char *parseContent(int command, char *input){
         return temp + 11;
     }
     else if(command == SUBSCRIBE){
+        char *inKeyword = strtok(NULL, " ");
+        if(inKeyword == NULL || !(strcmp(inKeyword, "in") == 0 || strcmp(inKeyword, "to") == 0)){
+            return input + 10;
+        }
         return input + 13;
     }
     else if(command == UNSUBSCRIBE){
+        char *inKeyword = strtok(NULL, " ");
+        if(inKeyword == NULL || !(strcmp(inKeyword, "in") == 0 || strcmp(inKeyword, "to") == 0)){
+            return input + 12;
+        }
         return input + 15;
     }
     return NULL;
@@ -119,10 +120,7 @@ void handleResponse(struct BlogOperation response){
         printf("%s\n", response.content);
     }
     else if(response.operation_type == NEW_POST){
-        printf("new post added in %s by 0%d\n%s", response.topic, response.client_id, response.content);
-    }
-    else if(response.operation_type == EXIT){
-        printf("exit\n");
+        printf("new post added in %s by %02d\n%s", response.topic, response.client_id, response.content);
     }
     else if(response.operation_type == ERROR){
         printf("%s\n", response.content);
@@ -133,7 +131,8 @@ void* waitForResponse(void* sock){
     int* sockfd = (int*) sock;
     while(true){
         struct BlogOperation response;
-        receive_all(*sockfd, &response, sizeof(struct BlogOperation));
+        int count = recv(*sockfd, &response, sizeof(struct BlogOperation), 0);
+        if(count != sizeof(struct BlogOperation)) logexit("recv");
         handleResponse(response);
         if(response.operation_type == EXIT){
             close(*sockfd);
